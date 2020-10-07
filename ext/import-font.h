@@ -29,6 +29,8 @@ FreetypeHandle * initializeFreetype();
 void deinitializeFreetype(FreetypeHandle *library);
 /// Loads a font file and returns its handle.
 FontHandle * loadFont(FreetypeHandle *library, const char *filename);
+/// Loads a font from memory and returns its handle.
+FontHandle * loadFontFromMemory(FreetypeHandle *library, const unsigned char *buffer, size_t bufferSize);
 /// Unloads a font file.
 void destroyFont(FontHandle *font);
 /// Outputs the metrics of a font file.
