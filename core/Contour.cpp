@@ -80,4 +80,11 @@ int Contour::winding() const {
     return sign(total);
 }
 
+void Contour::reverse() {
+    for (int i = (int) edges.size()/2; i >= 0; --i)
+        EdgeHolder::swap(edges[i], edges[edges.size()-1-i]);
+    for (std::vector<EdgeHolder>::iterator edge = edges.begin(); edge != edges.end(); ++edge)
+        (*edge)->reverse();
+}
+
 }
