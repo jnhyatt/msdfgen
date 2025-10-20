@@ -66,6 +66,11 @@ if(MSDFGEN_USE_VCPKG)
     endif()
 endif()
 
+if(MSDFGEN_INSTALL)
+    include(GNUInstallDirs)
+    include(CMakePackageConfigHelpers)
+endif()
+
 # Version is specified in vcpkg.json
 project(msdfgen VERSION ${MSDFGEN_VERSION} LANGUAGES CXX)
 
@@ -223,8 +228,6 @@ set_property(GLOBAL PROPERTY PREDEFINED_TARGETS_FOLDER meta)
 
 # Installation
 if(MSDFGEN_INSTALL)
-    include(GNUInstallDirs)
-    include(CMakePackageConfigHelpers)
     set(MSDFGEN_CONFIG_PATH "lib/cmake/msdfgen")
 
     # Generate msdfgen-config.h
