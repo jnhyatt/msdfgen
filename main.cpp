@@ -154,6 +154,7 @@ static void parseColoring(Shape &shape, const char *edgeAssignment) {
 }
 
 #ifdef MSDFGEN_EXTENSIONS
+
 static bool parseUnicode(unicode_t &unicode, const char *arg) {
     unsigned uuc;
     if (parseUnsignedDecOrHex(uuc, arg)) {
@@ -168,7 +169,8 @@ static bool parseUnicode(unicode_t &unicode, const char *arg) {
 }
 
 #ifndef MSDFGEN_DISABLE_VARIABLE_FONTS
-static FontHandle *loadVarFont(FreetypeHandle *library, const char *filename) {
+
+static FontHandle *loadVarFont(FreetypeHandle *library, const char *filename, bool &badAxes) {
     std::string buffer;
     while (*filename && *filename != '?')
         buffer.push_back(*filename++);
@@ -183,14 +185,31 @@ static FontHandle *loadVarFont(FreetypeHandle *library, const char *filename) {
                 double value = strtod(++filename, &end);
                 if (end > filename) {
                     filename = end;
-                    setFontVariationAxis(library, font, buffer.c_str(), value);
+                    if (!((buffer.size() == 4 && setFontVariationAxis(library, font, FontVariationAxis::Tag(buffer.c_str()), value)) || setFontVariationAxis(library, font, buffer.c_str(), value))) {
+                        badAxes = true;
+                        fprintf(stderr, "Font variation axis \"%s\" not found.\n", buffer.c_str());
+                    }
                 }
             }
         } while (*filename++ == '&');
     }
     return font;
 }
+
+static void printVarFontAxisList(FILE *output, FreetypeHandle *library, FontHandle *font) {
+    std::vector<FontVariationAxis> axes;
+    listFontVariationAxes(axes, library, font);
+    if (axes.empty())
+        fputs("The selected font doesn't appear to contain any variation axes.\n", output);
+    else {
+        fputs("Available font variation axes:\n", output);
+        for (std::vector<FontVariationAxis>::iterator axis = axes.begin(); axis != axes.end(); ++axis)
+            fprintf(output, "\t[%c%c%c%c] \"%s\" (%.17g to %.17g), default = %.17g\n", axis->tag.characters[0], axis->tag.characters[1], axis->tag.characters[2], axis->tag.characters[3], axis->name, axis->minValue, axis->maxValue, axis->defaultValue);
+    }
+}
+
 #endif
+
 #endif
 
 static bool writeTextBitmap(FILE *file, const float *values, int cols, int rows, int rowStride) {
@@ -398,7 +417,8 @@ static const char *const helpText =
 #endif
 #if defined(MSDFGEN_EXTENSIONS) && !defined(MSDFGEN_DISABLE_VARIABLE_FONTS)
     "  -varfont <filename and variables> <character code>\n"
-        "\tLoads a single glyph from a variable font. Specify variable values as x.ttf?var1=0.5&var2=1\n"
+        "\tLoads a single glyph from a variable font. Specify axis values as x.ttf?var1=0.5&var2=1\n"
+        "\tTo print the available variation axes, use -varfont <filename> printvars\n"
 #endif
     "\n"
     // Keep alphabetical order!
@@ -536,6 +556,7 @@ int main(int argc, const char *const *argv) {
         SVG,
         FONT,
         VAR_FONT,
+        VAR_FONT_AXIS_PRINTOUT,
         DESCRIPTION_ARG,
         DESCRIPTION_STDIN,
         DESCRIPTION_FILE
@@ -636,7 +657,7 @@ int main(int argc, const char *const *argv) {
         }
     #endif
     #ifdef MSDFGEN_EXTENSIONS
-        //ARG_CASE -font, -varfont
+        // ARG_CASE -font, -varfont
         if (argPos+2 < argc && (
             (!strcmp(arg, "-font") && (inputType = FONT, true))
             #ifndef MSDFGEN_DISABLE_VARIABLE_FONTS
@@ -647,6 +668,10 @@ int main(int argc, const char *const *argv) {
             const char *charArg = argv[argPos++];
             unsigned gi;
             switch (charArg[0]) {
+                case 'p':
+                    if (inputType == VAR_FONT && !strcmp(charArg, "printvars"))
+                        inputType = VAR_FONT_AXIS_PRINTOUT;
+                    break;
                 case 'G': case 'g':
                     if (parseUnsignedDecOrHex(gi, charArg+1)) {
                         glyphIndex = GlyphIndex(gi);
@@ -1037,8 +1062,8 @@ int main(int argc, const char *const *argv) {
         }
     #endif
     #ifdef MSDFGEN_EXTENSIONS
-        case FONT: case VAR_FONT: {
-            if (!glyphIndexSpecified && !unicode)
+        case FONT: case VAR_FONT: case VAR_FONT_AXIS_PRINTOUT: {
+            if (inputType != VAR_FONT_AXIS_PRINTOUT && !glyphIndexSpecified && !unicode)
                 ABORT("No character specified! Use -font <file.ttf/otf> <character code>. Character code can be a Unicode index (65, 0x41), a character in apostrophes ('A'), or a glyph index prefixed by g (g36, g0x24).");
             struct FreetypeFontGuard {
                 FreetypeHandle *ft;
@@ -1054,12 +1079,22 @@ int main(int argc, const char *const *argv) {
             } guard;
             if (!(guard.ft = initializeFreetype()))
                 ABORT("Failed to initialize FreeType library.");
-            if (!(guard.font = (
-                #ifndef MSDFGEN_DISABLE_VARIABLE_FONTS
-                    inputType == VAR_FONT ? loadVarFont(guard.ft, input) :
-                #endif
-                loadFont(guard.ft, input)
-            )))
+            #ifndef MSDFGEN_DISABLE_VARIABLE_FONTS
+                if (inputType == VAR_FONT || inputType == VAR_FONT_AXIS_PRINTOUT) {
+                    bool badAxesSpecified = false;
+                    if ((guard.font = loadVarFont(guard.ft, input, badAxesSpecified))) {
+                        if (inputType == VAR_FONT_AXIS_PRINTOUT) {
+                            printVarFontAxisList(stdout, guard.ft, guard.font);
+                            return 0;
+                        } else if (badAxesSpecified)
+                            printVarFontAxisList(stderr, guard.ft, guard.font);
+                    }
+                } else
+            #endif
+            /* if (defined(MSDFGEN_DISABLE_VARIABLE_FONTS) || inputType == FONT) */ {
+                guard.font = loadFont(guard.ft, input);
+            }
+            if (!guard.font)
                 ABORT("Failed to load font file.");
             if (unicode)
                 getGlyphIndex(glyphIndex, guard.font, unicode);
