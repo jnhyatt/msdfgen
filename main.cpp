@@ -492,6 +492,8 @@ static const char *const helpText =
         "\tPrints relevant metrics of the shape to the standard output.\n"
     "  -pxrange <range>\n"
         "\tSets the width of the range between the lowest and highest signed distance in pixels.\n"
+    "  -pxtranslate <x> <y>\n"
+        "\tSets the translation of the shape in output pixels.\n"
     "  -range <range>\n"
         "\tSets the width of the range between the lowest and highest signed distance in shape units.\n"
     "  -reversewinding\n"
@@ -611,6 +613,7 @@ int main(int argc, const char *const *argv) {
     Range range(1);
     Range pxRange(2);
     Vector2 translate;
+    Vector2 pxTranslate;
     Vector2 scale = 1;
     bool scaleSpecified = false;
     double angleThreshold = DEFAULT_ANGLE_THRESHOLD;
@@ -877,6 +880,13 @@ int main(int argc, const char *const *argv) {
             if (!(parseDouble(tx, argv[argPos++]) && parseDouble(ty, argv[argPos++])))
                 ABORT("Invalid translate arguments. Use -translate <x> <y> with two real numbers.");
             translate.set(tx, ty);
+            continue;
+        }
+        ARG_CASE("-pxtranslate", 2) {
+            double tx, ty;
+            if (!(parseDouble(tx, argv[argPos++]) && parseDouble(ty, argv[argPos++])))
+                ABORT("Invalid translate arguments. Use -pxtranslate <x> <y> with two real numbers.");
+            pxTranslate.set(tx, ty);
             continue;
         }
         ARG_CASE("-angle", 1) {
@@ -1161,6 +1171,7 @@ int main(int argc, const char *const *argv) {
     if (yFlip)
         shape.inverseYAxis = !shape.inverseYAxis;
 
+    translate += pxTranslate/scale;
     double avgScale = .5*(scale.x+scale.y);
     Shape::Bounds bounds = { };
     if (autoFrame || mode == METRICS || printMetrics || winding == GUESS || svgExport)
